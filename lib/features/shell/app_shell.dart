@@ -12,6 +12,16 @@ import '../meals/presentation/meal_state.dart';
 import '../backup/data/backup_service.dart';
 import '../places/data/place_search_service.dart';
 
+bool _previewOnly(BuildContext context) {
+  if (!const bool.fromEnvironment('UI_PREVIEW')) return false;
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('UI 미리보기입니다. 사진 선택과 백업은 Android 앱에서 이용해 주세요.'),
+    ),
+  );
+  return true;
+}
+
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
   @override
@@ -24,42 +34,88 @@ class _AppShellState extends State<AppShell> {
   Widget build(BuildContext context) => Scaffold(
     body: IndexedStack(
       index: index,
-      children: const [
-        HomeScreen(),
-        CalendarScreen(),
-        SizedBox(),
-        SearchScreen(),
-        MoreScreen(),
+      children: [
+        HomeScreen(onSearch: () => setState(() => index = 3)),
+        const CalendarScreen(),
+        const SizedBox(),
+        const SearchScreen(),
+        const MoreScreen(),
       ],
     ),
-    floatingActionButton: FloatingActionButton(
-      onPressed: () => openMealEditor(context),
-      child: const Icon(Icons.add),
-    ),
-    floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-    bottomNavigationBar: NavigationBar(
-      selectedIndex: index,
-      onDestinationSelected: (value) {
-        if (value == 2) {
-          openMealEditor(context);
-          return;
-        }
-        setState(() => index = value);
-      },
-      destinations: const [
-        NavigationDestination(
-          icon: Icon(Icons.home_outlined),
-          selectedIcon: Icon(Icons.home),
-          label: '홈',
+    bottomNavigationBar: DecoratedBox(
+      decoration: const BoxDecoration(
+        color: Color(0xFFFFFCF7),
+        border: Border(top: BorderSide(color: Color(0xFFECE5DC))),
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 72,
+          child: Row(
+            children: List.generate(5, (i) {
+              if (i == 2) {
+                return Expanded(
+                  child: Center(
+                    child: Semantics(
+                      label: '새 식사 기록',
+                      button: true,
+                      child: IconButton.filled(
+                        tooltip: '새 식사 기록',
+                        style: IconButton.styleFrom(
+                          minimumSize: const Size(48, 48),
+                          backgroundColor: const Color(0xFF7A5638),
+                        ),
+                        onPressed: () => openMealEditor(context),
+                        icon: const Icon(Icons.add, size: 28),
+                      ),
+                    ),
+                  ),
+                );
+              }
+              final active = index == i;
+              return Expanded(
+                child: Semantics(
+                  selected: active,
+                  child: InkWell(
+                    onTap: () => setState(() => index = i),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          [
+                            active ? Icons.home_rounded : Icons.home_outlined,
+                            Icons.calendar_month_outlined,
+                            Icons.add,
+                            Icons.search_rounded,
+                            Icons.more_horiz,
+                          ][i],
+                          color: active
+                              ? const Color(0xFF7A5638)
+                              : const Color(0xFF8D857D),
+                          size: 23,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          ['홈', '캘린더', '', '검색', '더보기'][i],
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: active
+                                ? FontWeight.w700
+                                : FontWeight.w400,
+                            color: active
+                                ? const Color(0xFF7A5638)
+                                : const Color(0xFF8D857D),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
         ),
-        NavigationDestination(
-          icon: Icon(Icons.calendar_month_outlined),
-          label: '캘린더',
-        ),
-        NavigationDestination(icon: Icon(Icons.add), label: '기록'),
-        NavigationDestination(icon: Icon(Icons.search), label: '검색'),
-        NavigationDestination(icon: Icon(Icons.more_horiz), label: '더보기'),
-      ],
+      ),
     ),
   );
 }
@@ -70,27 +126,43 @@ Future<void> openMealEditor(BuildContext context, {Meal? meal}) async {
   ).push(MaterialPageRoute(builder: (_) => MealEditorScreen(meal: meal)));
 }
 
-class HomeScreen extends ConsumerWidget {
-  const HomeScreen({super.key});
+class HomeScreen extends ConsumerStatefulWidget {
+  const HomeScreen({super.key, this.onSearch});
+  final VoidCallback? onSearch;
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  MealType? selectedType;
+  @override
+  Widget build(BuildContext context) {
     final meals = ref.watch(mealsProvider);
     return Scaffold(
       appBar: AppBar(
         centerTitle: false,
         title: const Row(
           children: [
-            Icon(Icons.rice_bowl_outlined, size: 23),
+            Image(
+              image: AssetImage('assets/branding/logo.png'),
+              width: 32,
+              height: 32,
+            ),
             SizedBox(width: 9),
             Text('오늘도 맛있는 하루'),
           ],
         ),
         actions: [
           IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.notifications_none_rounded),
+            tooltip: '기록 검색',
+            onPressed:
+                widget.onSearch ??
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SearchScreen()),
+                ),
+            icon: const Icon(Icons.search_rounded),
           ),
-          IconButton(onPressed: () {}, icon: const Icon(Icons.search_rounded)),
         ],
       ),
       body: meals.when(
@@ -99,26 +171,70 @@ class HomeScreen extends ConsumerWidget {
           message: '기록을 불러오지 못했습니다.',
           onRetry: () => ref.invalidate(mealsProvider),
         ),
-        data: (items) => items.isEmpty
-            ? EmptyView(onAdd: () => openMealEditor(context))
-            : RefreshIndicator(
-                onRefresh: () async => ref.invalidate(mealsProvider),
-                child: ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-                  itemCount: items.length + 1,
-                  separatorBuilder: (_, _) => const SizedBox(height: 14),
-                  itemBuilder: (_, i) => i == 0
-                      ? const _HomeFilters()
-                      : MealCard(meal: items[i - 1]),
+        data: (items) {
+          final visible = items
+              .where((m) => selectedType == null || m.type == selectedType)
+              .toList();
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                child: _HomeFilters(
+                  selected: selectedType,
+                  onChanged: (value) => setState(() => selectedType = value),
                 ),
               ),
+              Expanded(
+                child: items.isEmpty
+                    ? EmptyView(onAdd: () => openMealEditor(context))
+                    : visible.isEmpty
+                    ? Center(child: Text('${selectedType!.label} 기록이 아직 없어요'))
+                    : RefreshIndicator(
+                        onRefresh: () async => ref.invalidate(mealsProvider),
+                        child: ListView.separated(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                          itemCount: visible.length,
+                          separatorBuilder: (_, _) =>
+                              const SizedBox(height: 20),
+                          itemBuilder: (_, i) => Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (i == 0 ||
+                                  !isSameDay(
+                                    visible[i - 1].eatenDate,
+                                    visible[i].eatenDate,
+                                  )) ...[
+                                Text(
+                                  DateFormat(
+                                    'yyyy년 M월 d일 (E)',
+                                    'ko_KR',
+                                  ).format(visible[i].eatenDate),
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                              ],
+                              MealCard(meal: visible[i]),
+                            ],
+                          ),
+                        ),
+                      ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 }
 
 class _HomeFilters extends StatelessWidget {
-  const _HomeFilters();
+  const _HomeFilters({required this.selected, required this.onChanged});
+  final MealType? selected;
+  final ValueChanged<MealType?> onChanged;
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -126,26 +242,33 @@ class _HomeFilters extends StatelessWidget {
       SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
-          children: ['전체', '아침', '점심', '저녁', '간식', '야식']
+          children: <MealType?>[null, ...MealType.values]
               .map(
                 (label) => Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: ChoiceChip(
-                    label: Text(label),
-                    selected: label == '전체',
+                    label: ConstrainedBox(
+                      constraints: const BoxConstraints(minWidth: 36),
+                      child: Text(
+                        label?.label ?? '전체',
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        softWrap: false,
+                        style: TextStyle(
+                          color: selected == label
+                              ? Colors.white
+                              : const Color(0xFF62584F),
+                        ),
+                      ),
+                    ),
+                    selected: selected == label,
+                    onSelected: (_) => onChanged(label),
                     showCheckmark: false,
                   ),
                 ),
               )
               .toList(),
         ),
-      ),
-      const SizedBox(height: 18),
-      Text(
-        '최근 식사',
-        style: Theme.of(
-          context,
-        ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
       ),
     ],
   );
@@ -161,12 +284,37 @@ class EmptyView extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.photo_camera_back_outlined, size: 64),
-          const SizedBox(height: 16),
-          Text('아직 기록이 없어요', style: Theme.of(context).textTheme.titleLarge),
+          Container(
+            width: 104,
+            height: 104,
+            decoration: const BoxDecoration(
+              color: Color(0xFFF3EBE0),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.restaurant_rounded,
+              size: 40,
+              color: Color(0xFF7A5638),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            '기억하고 싶은 한 끼',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+          ),
           const SizedBox(height: 8),
-          const Text('오늘의 한 끼를 사진과 함께 남겨보세요.'),
-          const SizedBox(height: 20),
+          const Text(
+            '맛있었던 순간을 사진으로 남겨보세요.\n나만의 식사 일기가 차곡차곡 쌓여요.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Color(0xFF80766D),
+              height: 1.8,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 28),
           FilledButton.icon(
             onPressed: onAdd,
             icon: const Icon(Icons.add),
@@ -195,64 +343,151 @@ class ErrorView extends StatelessWidget {
 }
 
 class MealCard extends StatelessWidget {
-  const MealCard({super.key, required this.meal});
+  const MealCard({super.key, required this.meal, this.compact = false});
   final Meal meal;
+  final bool compact;
   @override
-  Widget build(BuildContext context) => Card(
-    child: InkWell(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => MealDetailScreen(mealId: meal.id)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AspectRatio(
-            aspectRatio: 1.7,
-            child: _PhotoCollage(photos: meal.photos),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${meal.type.label} · ${meal.placeName}',
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.bold),
+  Widget build(BuildContext context) {
+    if (compact) {
+      return InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => MealDetailScreen(mealId: meal.id)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: SizedBox(
+                  width: 76,
+                  height: 76,
+                  child: _PhotoCollage(photos: meal.photos),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${meal.type.label} · ${meal.placeName}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
                       ),
-                      const SizedBox(height: 4),
-                      Text(DateFormat('yyyy년 M월 d일').format(meal.eatenDate)),
-                      if (meal.items.isNotEmpty) ...[
-                        const SizedBox(height: 5),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      [
+                        DateFormat('M월 d일 (E)', 'ko_KR').format(meal.eatenDate),
+                        if (meal.eatenTime != null) meal.eatenTime!,
+                      ].join('  '),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF80766D),
+                      ),
+                    ),
+                    if (meal.items.isNotEmpty)
+                      Text(
+                        meal.items.map((e) => e.name).join(', '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF80766D),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right,
+                size: 18,
+                color: Color(0xFFA89D92),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return Card(
+      child: InkWell(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => MealDetailScreen(mealId: meal.id)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AspectRatio(
+              aspectRatio: 1.5,
+              child: _PhotoCollage(photos: meal.photos),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Text(
-                          meal.items.map((e) => e.name).join(', '),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          '${meal.type.label} · ${meal.placeName}',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          [
+                            if (meal.eatenTime != null) meal.eatenTime!,
+                            if (meal.people.isNotEmpty) meal.people.join(', '),
+                            if (meal.eatenTime == null && meal.people.isEmpty)
+                              DateFormat(
+                                'M월 d일 (E)',
+                                'ko_KR',
+                              ).format(meal.eatenDate),
+                          ].join(' · '),
                           style: const TextStyle(
-                            color: Color(0xFF766A61),
-                            fontSize: 13,
+                            fontSize: 12,
+                            color: Color(0xFF80766D),
                           ),
                         ),
+                        if (meal.items.isNotEmpty) ...[
+                          const SizedBox(height: 5),
+                          Text(
+                            meal.items.map((e) => e.name).join(', '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFF766A61),
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
-                ),
-                if (meal.photos.length > 1)
-                  Chip(
-                    avatar: const Icon(Icons.photo_library_outlined, size: 16),
-                    label: Text('${meal.photos.length}'),
-                  ),
-              ],
+                  if (meal.photos.length > 1)
+                    Chip(
+                      avatar: const Icon(
+                        Icons.photo_library_outlined,
+                        size: 16,
+                      ),
+                      label: Text('${meal.photos.length}'),
+                    ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _PhotoCollage extends StatelessWidget {
@@ -484,6 +719,7 @@ class _MealEditorScreenState extends ConsumerState<MealEditorScreen> {
   }
 
   Future<void> pick(ImageSource source) async {
+    if (_previewOnly(context)) return;
     final picker = ImagePicker();
     if (source == ImageSource.camera) {
       final value = await picker.pickImage(source: source);
@@ -608,10 +844,20 @@ class _MealEditorScreenState extends ConsumerState<MealEditorScreen> {
       body: Form(
         key: formKey,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
           children: [
+            const Text(
+              '오늘의 한 끼',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              '사진과 함께 맛있는 순간을 남겨요.',
+              style: TextStyle(fontSize: 13, color: Color(0xFF80766D)),
+            ),
+            const SizedBox(height: 20),
             SizedBox(
-              height: 132,
+              height: photos.isEmpty ? 180 : 148,
               child: ReorderableListView.builder(
                 scrollDirection: Axis.horizontal,
                 itemCount: photos.length + 1,
@@ -630,14 +876,22 @@ class _MealEditorScreenState extends ConsumerState<MealEditorScreen> {
                   if (index == photos.length) {
                     return SizedBox(
                       key: const ValueKey('add-photo'),
-                      width: 118,
+                      width: photos.isEmpty
+                          ? MediaQuery.sizeOf(context).width - 40
+                          : 132,
                       child: OutlinedButton(
                         onPressed: () => pick(ImageSource.gallery),
                         child: const Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.add_photo_alternate_outlined),
+                            Icon(Icons.add_photo_alternate_outlined, size: 30),
+                            SizedBox(height: 10),
                             Text('사진 추가'),
+                            SizedBox(height: 4),
+                            Text(
+                              '한 장 이상 선택해 주세요',
+                              style: TextStyle(fontSize: 11),
+                            ),
                           ],
                         ),
                       ),
@@ -647,44 +901,47 @@ class _MealEditorScreenState extends ConsumerState<MealEditorScreen> {
                   return Padding(
                     key: ValueKey(photo.key),
                     padding: const EdgeInsets.only(right: 8),
-                    child: SizedBox(
-                      width: 118,
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          if (photo.existing != null)
-                            MealImage(photo: photo.existing)
-                          else
-                            Image.file(
-                              File(photo.picked!.path),
-                              fit: BoxFit.cover,
-                            ),
-                          if (index == 0)
-                            const Align(
-                              alignment: Alignment.bottomLeft,
-                              child: Padding(
-                                padding: EdgeInsets.all(6),
-                                child: Chip(label: Text('대표')),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: SizedBox(
+                        width: 132,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            if (photo.existing != null)
+                              MealImage(photo: photo.existing)
+                            else
+                              Image.file(
+                                File(photo.picked!.path),
+                                fit: BoxFit.cover,
+                              ),
+                            if (index == 0)
+                              const Align(
+                                alignment: Alignment.bottomLeft,
+                                child: Padding(
+                                  padding: EdgeInsets.all(6),
+                                  child: Chip(label: Text('대표')),
+                                ),
+                              ),
+                            Align(
+                              alignment: Alignment.topRight,
+                              child: IconButton.filled(
+                                onPressed: () {
+                                  if (photos.length == 1) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('사진은 한 장 이상 필요합니다.'),
+                                      ),
+                                    );
+                                    return;
+                                  }
+                                  setState(() => photos.removeAt(index));
+                                },
+                                icon: const Icon(Icons.close, size: 17),
                               ),
                             ),
-                          Align(
-                            alignment: Alignment.topRight,
-                            child: IconButton.filled(
-                              onPressed: () {
-                                if (photos.length == 1) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('사진은 한 장 이상 필요합니다.'),
-                                    ),
-                                  );
-                                  return;
-                                }
-                                setState(() => photos.removeAt(index));
-                              },
-                              icon: const Icon(Icons.close, size: 17),
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   );
@@ -736,7 +993,15 @@ class _MealEditorScreenState extends ConsumerState<MealEditorScreen> {
               children: MealType.values
                   .map(
                     (e) => ChoiceChip(
-                      label: Text(e.label),
+                      label: Text(
+                        e.label,
+                        style: TextStyle(
+                          color: type == e
+                              ? Colors.white
+                              : const Color(0xFF62584F),
+                        ),
+                      ),
+                      showCheckmark: false,
                       selected: type == e,
                       onSelected: (_) => setState(() => type = e),
                     ),
@@ -798,6 +1063,18 @@ class _MealEditorScreenState extends ConsumerState<MealEditorScreen> {
                 icon: const Icon(Icons.map_outlined),
                 label: const Text('지도에서 장소 검색'),
               ),
+            ),
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 16),
+            const Text(
+              '조금 더 남기고 싶다면',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              '메뉴, 동행인, 메모는 비워두어도 괜찮아요.',
+              style: TextStyle(fontSize: 12, color: Color(0xFF80766D)),
             ),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -967,7 +1244,7 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
   Future<void> confirmPlace(PlaceResult place) async {
     final uri = Uri.https('dapi.kakao.com', '/v2/maps/staticmap', {
       'center': '${place.longitude},${place.latitude}',
-      'markers': '${place.longitude},${place.latitude}',
+      'markers': 'location:${place.longitude},${place.latitude}|option:false',
       'size': '640x320',
     });
     final selected = await showModalBottomSheet<bool>(
@@ -1036,7 +1313,7 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
                   ),
                   SizedBox(height: 8),
                   Text(
-                    'KAKAO_REST_API_KEY가 없습니다. 뒤로 돌아가 장소를 직접 입력해 주세요. 가짜 검색 결과는 표시하지 않습니다.',
+                    '장소 검색을 아직 사용할 수 없어요.\n이전 화면에서 장소 이름을 직접 입력해 주세요.',
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -1151,18 +1428,7 @@ class MealDetailScreen extends ConsumerWidget {
         ),
         body: ListView(
           children: [
-            SizedBox(
-              height: 320,
-              child: PageView(
-                children: meal.photos
-                    .map(
-                      (p) => InteractiveViewer(
-                        child: MealImage(photo: p, fit: BoxFit.contain),
-                      ),
-                    )
-                    .toList(),
-              ),
-            ),
+            _DetailPhotos(photos: meal.photos),
             Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
@@ -1174,7 +1440,40 @@ class MealDetailScreen extends ConsumerWidget {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  Text(DateFormat('yyyy년 M월 d일').format(meal.eatenDate)),
+                  const SizedBox(height: 8),
+                  Text(
+                    [
+                      DateFormat(
+                        'yyyy년 M월 d일 (E)',
+                        'ko_KR',
+                      ).format(meal.eatenDate),
+                      if (meal.eatenTime != null) meal.eatenTime!,
+                    ].join('  '),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF80766D),
+                    ),
+                  ),
+                  if (meal.placeAddress?.isNotEmpty == true) ...[
+                    const SizedBox(height: 16),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.place_outlined,
+                          size: 18,
+                          color: Color(0xFF7A5638),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            meal.placeAddress!,
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                   const Divider(height: 32),
                   InfoLine(
                     '메뉴',
@@ -1203,6 +1502,108 @@ class MealDetailScreen extends ConsumerWidget {
         ),
       );
     },
+  );
+}
+
+class _DetailPhotos extends StatefulWidget {
+  const _DetailPhotos({required this.photos});
+  final List<MealPhoto> photos;
+  @override
+  State<_DetailPhotos> createState() => _DetailPhotosState();
+}
+
+class _DetailPhotosState extends State<_DetailPhotos> {
+  final controller = PageController();
+  int page = 0;
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      AspectRatio(
+        aspectRatio: 1.15,
+        child: Stack(
+          children: [
+            PageView(
+              controller: controller,
+              onPageChanged: (value) => setState(() => page = value),
+              children: widget.photos
+                  .map(
+                    (p) => InteractiveViewer(
+                      child: MealImage(photo: p, fit: BoxFit.contain),
+                    ),
+                  )
+                  .toList(),
+            ),
+            if (widget.photos.isNotEmpty)
+              Positioned(
+                right: 16,
+                bottom: 16,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '${page + 1}/${widget.photos.length}',
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+      if (widget.photos.length > 1)
+        SizedBox(
+          height: 76,
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 6),
+            scrollDirection: Axis.horizontal,
+            itemCount: widget.photos.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            itemBuilder: (_, i) => Semantics(
+              label: '사진 ${i + 1}',
+              selected: page == i,
+              button: true,
+              child: InkWell(
+                onTap: () => controller.animateToPage(
+                  i,
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut,
+                ),
+                child: Container(
+                  width: 60,
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: page == i
+                          ? const Color(0xFF7A5638)
+                          : Colors.transparent,
+                      width: 2,
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: MealImage(
+                      photo: widget.photos[i],
+                      useThumbnail: true,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+    ],
   );
 }
 
@@ -1251,13 +1652,36 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           List<Meal> events(DateTime d) =>
               meals.where((m) => isSameDay(m.eatenDate, d)).toList();
           final day = events(selected);
-          return Column(
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
             children: [
               TableCalendar<Meal>(
                 locale: 'ko_KR',
                 firstDay: DateTime(2000),
                 lastDay: DateTime.now().add(const Duration(days: 365)),
                 focusedDay: focused,
+                availableCalendarFormats: const {CalendarFormat.month: '월'},
+                headerStyle: const HeaderStyle(
+                  formatButtonVisible: false,
+                  titleCentered: true,
+                  titleTextStyle: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                calendarStyle: const CalendarStyle(
+                  outsideDaysVisible: false,
+                  selectedDecoration: BoxDecoration(
+                    color: Color(0xFF7A5638),
+                    shape: BoxShape.circle,
+                  ),
+                  todayDecoration: BoxDecoration(
+                    color: Color(0xFFF0E5D8),
+                    shape: BoxShape.circle,
+                  ),
+                  todayTextStyle: TextStyle(color: Color(0xFF7A5638)),
+                  weekendTextStyle: TextStyle(color: Color(0xFF9D8068)),
+                ),
                 selectedDayPredicate: (d) => isSameDay(d, selected),
                 eventLoader: events,
                 calendarBuilders: CalendarBuilders<Meal>(
@@ -1268,9 +1692,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     return Positioned(
                       right: 1,
                       bottom: 1,
-                      child: ClipOval(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
                         child: SizedBox.square(
-                          dimension: 22,
+                          dimension: 26,
                           child: MealImage(
                             photo: dayEvents.first.photos.first,
                             useThumbnail: true,
@@ -1286,17 +1711,48 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 }),
                 onPageChanged: (f) => focused = f,
               ),
+              const SizedBox(height: 20),
               const Divider(),
-              Expanded(
-                child: day.isEmpty
-                    ? const Center(child: Text('이 날짜에는 기록이 없습니다.'))
-                    : ListView.separated(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: day.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 10),
-                        itemBuilder: (_, i) => MealCard(meal: day[i]),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      DateFormat('M월 d일 (E)', 'ko_KR').format(selected),
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
                       ),
+                    ),
+                  ),
+                  Text(
+                    '${day.length}개의 기록',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF80766D),
+                    ),
+                  ),
+                ],
               ),
+              if (day.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 40),
+                  child: Center(
+                    child: Text(
+                      '이날의 한 끼를 남겨보세요.',
+                      style: TextStyle(color: Color(0xFF80766D)),
+                    ),
+                  ),
+                )
+              else
+                ...day.map(
+                  (meal) => Column(
+                    children: [
+                      MealCard(meal: meal, compact: true),
+                      const Divider(),
+                    ],
+                  ),
+                ),
             ],
           );
         },
@@ -1318,6 +1774,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   MealType? type;
   DateTime? startDate, endDate;
   MealFilter filter = const MealFilter();
+  bool editingFilters = true;
   @override
   void dispose() {
     place.dispose();
@@ -1326,22 +1783,27 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     super.dispose();
   }
 
-  void apply() => setState(
-    () => filter = MealFilter(
-      place: place.text,
-      menu: menu.text,
-      person: person.text,
-      type: type,
-      startDate: startDate,
-      endDate: endDate,
-    ),
-  );
+  void apply() {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      editingFilters = false;
+      filter = MealFilter(
+        place: place.text,
+        menu: menu.text,
+        person: person.text,
+        type: type,
+        startDate: startDate,
+        endDate: endDate,
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final result = ref.watch(filteredMealsProvider(filter));
     return Scaffold(
       appBar: AppBar(
-        title: const Text('검색 및 필터'),
+        title: Text(editingFilters ? '기록 검색' : '검색 결과'),
         actions: [
           TextButton(
             onPressed: () {
@@ -1353,97 +1815,217 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 startDate = null;
                 endDate = null;
                 filter = const MealFilter();
+                editingFilters = true;
               });
             },
             child: const Text('초기화'),
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      final range = await showDateRangePicker(
-                        context: context,
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime.now().add(const Duration(days: 365)),
-                        initialDateRange: startDate == null || endDate == null
-                            ? null
-                            : DateTimeRange(start: startDate!, end: endDate!),
-                      );
-                      if (range != null) {
-                        setState(() {
-                          startDate = range.start;
-                          endDate = range.end;
-                        });
-                      }
-                    },
-                    icon: const Icon(Icons.date_range_outlined),
-                    label: Text(
-                      startDate == null
-                          ? '날짜 · 전체'
-                          : '${DateFormat('yyyy.MM.dd').format(startDate!)} ~ ${DateFormat('yyyy.MM.dd').format(endDate!)}',
+      body: CustomScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        slivers: [
+          if (editingFilters)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '어떤 한 끼를 찾고 있나요?',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: place,
-                  decoration: const InputDecoration(labelText: '장소'),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: menu,
-                  decoration: const InputDecoration(labelText: '메뉴'),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: person,
-                  decoration: const InputDecoration(labelText: '같이 먹은 사람'),
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<MealType?>(
-                  initialValue: type,
-                  decoration: const InputDecoration(labelText: '식사 구분'),
-                  items: [
-                    const DropdownMenuItem(value: null, child: Text('전체')),
-                    ...MealType.values.map(
-                      (e) => DropdownMenuItem(value: e, child: Text(e.label)),
+                    const SizedBox(height: 6),
+                    const Text(
+                      '기억나는 조건을 골라 함께 검색해 보세요.',
+                      style: TextStyle(fontSize: 13, color: Color(0xFF80766D)),
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          final range = await showDateRangePicker(
+                            context: context,
+                            firstDate: DateTime(2000),
+                            lastDate: DateTime.now().add(
+                              const Duration(days: 365),
+                            ),
+                            initialDateRange:
+                                startDate == null || endDate == null
+                                ? null
+                                : DateTimeRange(
+                                    start: startDate!,
+                                    end: endDate!,
+                                  ),
+                          );
+                          if (range != null) {
+                            setState(() {
+                              startDate = range.start;
+                              endDate = range.end;
+                            });
+                          }
+                        },
+                        icon: const Icon(Icons.date_range_outlined),
+                        label: Text(
+                          startDate == null
+                              ? '날짜 · 전체'
+                              : '${DateFormat('yyyy.MM.dd').format(startDate!)} ~ ${DateFormat('yyyy.MM.dd').format(endDate!)}',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: place,
+                      decoration: const InputDecoration(
+                        labelText: '장소',
+                        hintText: '집, 회사, 식당 이름',
+                        prefixIcon: Icon(Icons.place_outlined, size: 20),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: menu,
+                      decoration: const InputDecoration(
+                        labelText: '메뉴',
+                        hintText: '기억나는 음식 이름',
+                        prefixIcon: Icon(Icons.restaurant_outlined, size: 20),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: person,
+                      decoration: const InputDecoration(
+                        labelText: '같이 먹은 사람',
+                        prefixIcon: Icon(Icons.people_outline, size: 20),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '식사 구분',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Wrap(
+                      spacing: 8,
+                      children: <MealType?>[null, ...MealType.values]
+                          .map(
+                            (value) => ChoiceChip(
+                              label: Text(
+                                value?.label ?? '전체',
+                                style: TextStyle(
+                                  color: value == type
+                                      ? Colors.white
+                                      : const Color(0xFF62584F),
+                                ),
+                              ),
+                              selected: value == type,
+                              showCheckmark: false,
+                              onSelected: (_) => setState(() => type = value),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: apply,
+                        child: const Text('검색하기'),
+                      ),
                     ),
                   ],
-                  onChanged: (v) => setState(() => type = v),
                 ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: apply,
-                    child: const Text('검색하기'),
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
-          Expanded(
-            child: result.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, s) => const Center(child: Text('검색하지 못했습니다.')),
+          if (!editingFilters)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        if (filter.startDate != null)
+                          Chip(
+                            label: Text(
+                              '${DateFormat('M.d').format(filter.startDate!)} ~ ${DateFormat('M.d').format(filter.endDate!)}',
+                            ),
+                          ),
+                        for (final label in [
+                          filter.type?.label,
+                          filter.place,
+                          filter.menu,
+                          filter.person,
+                        ])
+                          if (label != null && label.trim().isNotEmpty)
+                            Chip(label: Text(label)),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '총 ${result.asData?.value.length ?? 0}개의 기록',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: () =>
+                              setState(() => editingFilters = true),
+                          icon: const Icon(Icons.tune, size: 17),
+                          label: const Text('조건 수정'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (!editingFilters)
+            result.when(
+              loading: () => const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.all(40),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              ),
+              error: (e, s) => SliverToBoxAdapter(
+                child: ErrorView(
+                  message: '검색하지 못했습니다.',
+                  onRetry: () => ref.invalidate(filteredMealsProvider(filter)),
+                ),
+              ),
               data: (items) => items.isEmpty
-                  ? const Center(child: Text('조건에 맞는 기록이 없습니다.'))
-                  : ListView.separated(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: items.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 10),
-                      itemBuilder: (_, i) => MealCard(meal: items[i]),
+                  ? const SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.all(40),
+                        child: Center(child: Text('조건에 맞는 기록이 없습니다.')),
+                      ),
+                    )
+                  : SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                      sliver: SliverList.builder(
+                        itemCount: items.length,
+                        itemBuilder: (_, i) => Column(
+                          children: [
+                            MealCard(meal: items[i], compact: true),
+                            const Divider(),
+                          ],
+                        ),
+                      ),
                     ),
             ),
-          ),
         ],
       ),
     );
@@ -1460,6 +2042,7 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
   bool exporting = false;
   bool restoring = false;
   Future<void> exportBackup() async {
+    if (_previewOnly(context)) return;
     setState(() => exporting = true);
     try {
       final file = await BackupService().createBackup();
@@ -1487,6 +2070,7 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
   }
 
   Future<void> restoreBackup() async {
+    if (_previewOnly(context)) return;
     final picked = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['zip'],
@@ -1545,7 +2129,54 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('더보기')),
     body: ListView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
       children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Image.asset(
+                  'assets/branding/logo.png',
+                  width: 64,
+                  height: 64,
+                ),
+              ),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '한끼일기',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      '맛있는 순간, 나만의 기록',
+                      style: TextStyle(fontSize: 13, color: Color(0xFF80766D)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 12),
+          child: Text(
+            '기록 보관',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF80766D),
+            ),
+          ),
+        ),
         ListTile(
           leading: Icon(Icons.backup_outlined),
           title: const Text('ZIP 백업'),
@@ -1558,8 +2189,9 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.chevron_right),
-          onTap: exporting ? null : exportBackup,
+          onTap: exporting || restoring ? null : exportBackup,
         ),
+        const Divider(),
         ListTile(
           leading: const Icon(Icons.restore_outlined),
           title: const Text('ZIP에서 복원'),
@@ -1572,7 +2204,7 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.chevron_right),
-          onTap: restoring ? null : restoreBackup,
+          onTap: exporting || restoring ? null : restoreBackup,
         ),
         const Divider(),
         const ListTile(
@@ -1581,14 +2213,9 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
           subtitle: Text('사진과 기록은 이 기기의 앱 전용 저장소에 보관됩니다. 앱 삭제 전 백업이 필요합니다.'),
         ),
         const ListTile(
-          leading: Icon(Icons.palette_outlined),
-          title: Text('브랜딩'),
-          subtitle: Text('제공된 한끼일기 로고와 앱 아이콘을 사용합니다.'),
-        ),
-        const ListTile(
           leading: Icon(Icons.info_outline),
           title: Text('앱 정보'),
-          subtitle: Text('한끼일기 0.1.0'),
+          subtitle: Text('한끼일기 1.0.0 · 나만의 오프라인 식사 일기'),
         ),
       ],
     ),

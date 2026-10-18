@@ -5,15 +5,55 @@ import 'ui_preview.dart';
 
 ThemeData buildAppTheme() {
   const brown = Color(0xFF7A5638);
-  final scheme = ColorScheme.fromSeed(
-    seedColor: brown,
-    surface: const Color(0xFFFFFCF7),
-  );
+  final scheme =
+      ColorScheme.fromSeed(
+        seedColor: brown,
+        surface: const Color(0xFFFFFCF7),
+      ).copyWith(
+        primary: brown,
+        onPrimary: Colors.white,
+        onSurface: const Color(0xFF29231F),
+        onSurfaceVariant: const Color(0xFF80766D),
+        outlineVariant: const Color(0xFFECE5DC),
+      );
   return ThemeData(
     useMaterial3: true,
     colorScheme: scheme,
     scaffoldBackgroundColor: const Color(0xFFFFFCF7),
     fontFamilyFallback: const ['Noto Sans KR', 'Malgun Gothic'],
+    dividerTheme: const DividerThemeData(
+      color: Color(0xFFECE5DC),
+      thickness: 1,
+      space: 1,
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        minimumSize: const Size(48, 48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(48, 46),
+        side: const BorderSide(color: Color(0xFFE2D8CC)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    ),
+    listTileTheme: const ListTileThemeData(
+      contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+      iconColor: Color(0xFF7A5638),
+      titleTextStyle: TextStyle(
+        color: Color(0xFF29231F),
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+      ),
+      subtitleTextStyle: TextStyle(
+        color: Color(0xFF80766D),
+        fontSize: 12,
+        height: 1.6,
+      ),
+    ),
     appBarTheme: const AppBarTheme(
       backgroundColor: Color(0xFFFFFCF7),
       surfaceTintColor: Colors.transparent,
@@ -21,7 +61,7 @@ ThemeData buildAppTheme() {
       elevation: 0,
       titleTextStyle: TextStyle(
         color: Color(0xFF211A16),
-        fontSize: 18,
+        fontSize: 17,
         fontWeight: FontWeight.w700,
       ),
     ),
@@ -31,7 +71,7 @@ ThemeData buildAppTheme() {
       color: Colors.white,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.all(Radius.circular(18)),
+        borderRadius: BorderRadius.all(Radius.circular(12)),
         side: BorderSide(color: Color(0xFFECE5DC)),
       ),
     ),
@@ -63,9 +103,10 @@ ThemeData buildAppTheme() {
     chipTheme: const ChipThemeData(
       backgroundColor: Color(0xFFF5F0EA),
       selectedColor: brown,
+      checkmarkColor: Colors.white,
       side: BorderSide.none,
       shape: StadiumBorder(),
-      labelStyle: TextStyle(fontWeight: FontWeight.w600),
+      labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
     ),
     floatingActionButtonTheme: const FloatingActionButtonThemeData(
       backgroundColor: brown,
