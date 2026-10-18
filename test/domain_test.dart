@@ -43,4 +43,28 @@ void main() {
     expect(service.isConfigured, isFalse);
     expect(() => service.search('식당'), throwsStateError);
   });
+
+  test('카카오맵 서비스 비활성화 오류를 설정 안내로 변환한다', () async {
+    final service = KakaoPlaceSearchService(
+      apiKey: 'test-key',
+      client: MockClient(
+        (_) async => http.Response(
+          '{"errorType":"NotAuthorizedError","message":"App(Delicious_Diary) disabled OPEN_MAP_AND_LOCAL service."}',
+          403,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      ),
+    );
+
+    expect(
+      () => service.search('식당'),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('카카오맵 > 사용 설정 > 상태'),
+        ),
+      ),
+    );
+  });
 }

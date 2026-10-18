@@ -42,8 +42,18 @@ class KakaoPlaceSearchService implements PlaceSearchService {
     final response = await _client
         .get(uri, headers: {'Authorization': 'KakaoAK $apiKey'})
         .timeout(const Duration(seconds: 10));
-    if (response.statusCode == 401 || response.statusCode == 403) {
-      throw StateError('지도 API 인증에 실패했습니다. 키와 앱 설정을 확인해 주세요.');
+    if (response.statusCode == 401) {
+      throw StateError('카카오 REST API 키가 올바르지 않습니다. REST API 키를 다시 확인해 주세요.');
+    }
+    if (response.statusCode == 403) {
+      final message = _errorMessage(response);
+      if (message.contains('disabled OPEN_MAP_AND_LOCAL service')) {
+        throw StateError(
+          '카카오맵 API가 비활성화되어 있습니다. 카카오 개발자 콘솔에서 '
+          '[카카오맵 > 사용 설정 > 상태]를 ON으로 변경해 주세요.',
+        );
+      }
+      throw StateError('카카오맵 API 사용 권한이 없습니다. 카카오 앱의 사용 설정을 확인해 주세요.');
     }
     if (response.statusCode == 429) {
       throw StateError('지도 검색 사용량을 초과했습니다. 잠시 후 다시 시도해 주세요.');
@@ -66,5 +76,17 @@ class KakaoPlaceSearchService implements PlaceSearchService {
         longitude: double.parse(row['x'] as String),
       );
     }).toList();
+  }
+
+  String _errorMessage(http.Response response) {
+    try {
+      final value = jsonDecode(utf8.decode(response.bodyBytes));
+      if (value is Map<String, dynamic>) {
+        return value['message']?.toString() ?? value['msg']?.toString() ?? '';
+      }
+    } catch (_) {
+      // Fall through to a generic error message for malformed responses.
+    }
+    return '';
   }
 }
